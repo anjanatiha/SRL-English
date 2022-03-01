@@ -31,6 +31,7 @@ nom_sense_srl_predictor = NomSenseSRLPredictor.from_archive(nom_sense_srl_archiv
 nom_sense_srl_predictor._model = nom_sense_srl_predictor._model.cuda()
 
 all_nom_sense_srl_predictor = AllNomSenseSRLPredictor.from_archive(nom_sense_srl_archive, "all-nombank-sense-srl")
+all_nom_sense_srl_predictor._model = all_nom_sense_srl_predictor._model.cuda()
 verb_sense_srl_predictor = SenseSRLPredictor.from_archive(verb_sense_srl_archive, "sense-semantic-role-labeling")
 verb_sense_srl_predictor._model = verb_sense_srl_predictor._model.cuda()
 print('LOADED VERB MODEL')
