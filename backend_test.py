@@ -18,41 +18,51 @@ import prep_srl.preposition_srl_model
 from tabular_view import *
 from datetime import datetime
 from time import time
+import torch
 from allennlp.data.tokenizers.word_splitter import SpacyWordSplitter
 
 serverURL = sys.argv[1]
 serverPort = int( sys.argv[2] )
 
+language = 'en_core_web_sm'
+tokenizer = SpacyWordSplitter(language=language, pos_tags=True)
+
+cuda_available = torch.cuda.is_available()
 # start_load_model = time()
 nom_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/nom-sense-srl/model.tar.gz',)
 verb_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/verb-sense-srl/model.tar.gz',)
 
 nom_sense_srl_predictor = NomSenseSRLPredictor.from_archive(nom_sense_srl_archive, "nombank-sense-srl")
-nom_sense_srl_predictor._model = nom_sense_srl_predictor._model.cuda()
+if cuda_available:
+    nom_sense_srl_predictor._model = nom_sense_srl_predictor._model.cuda()
 
 all_nom_sense_srl_predictor = AllNomSenseSRLPredictor.from_archive(nom_sense_srl_archive, "all-nombank-sense-srl")
-all_nom_sense_srl_predictor._model = all_nom_sense_srl_predictor._model.cuda()
+if cuda_available:
+    all_nom_sense_srl_predictor._model = all_nom_sense_srl_predictor._model.cuda()
+# print('LOADED NOM MODEL')
+
 verb_sense_srl_predictor = SenseSRLPredictor.from_archive(verb_sense_srl_archive, "sense-semantic-role-labeling")
-verb_sense_srl_predictor._model = verb_sense_srl_predictor._model.cuda()
+if cuda_available:
+    verb_sense_srl_predictor._model = verb_sense_srl_predictor._model.cuda()
 print('LOADED VERB MODEL')
 # verb_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/verb-srl-bert/model.tar.gz',)
 # verb_srl_predictor = VerbSemanticRoleLabelerPredictor.from_archive(verb_srl_archive, "semantic-role-labeling")
 
 nom_id_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/test-id-bert/model.tar.gz',)
 nom_id_predictor = NominalIdPredictor.from_archive(nom_id_archive, "nombank-id")
-nom_id_predictor._model = nom_id_predictor._model.cuda()
+if cuda_available:
+    nom_id_predictor._model = nom_id_predictor._model.cuda()
 
 # nom_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/nom-srl-bert/model.tar.gz',)
 # nom_srl_predictor = NominalSemanticRoleLabelerPredictor.from_archive(nom_srl_archive, "nombank-semantic-role-labeling")
 # noun_srl_predictor = NounSemanticRoleLabelerPredictor.from_archive(nom_srl_archive, "noun-semantic-role-labeling")
 print('LOADED NOM MODEL')
 
-prep_srl_archive = load_archive("/shared/fmarini/preposition-SRL/preposition-SRL/new-srl-manual/model.tar.gz",)
-prep_srl_predictor = PrepositionSemanticRoleLabelerPredictor.from_archive(prep_srl_archive, "preposition-semantic-role-labeling")
-prep_srl_predictor._model = prep_srl_predictor._model.cuda()
-print('LOADED PREP MODEL')
+# prep_srl_archive = load_archive("/shared/fmarini/preposition-SRL/preposition-SRL/new-srl-manual/model.tar.gz",)
+# prep_srl_predictor = PrepositionSemanticRoleLabelerPredictor.from_archive(prep_srl_archive, "preposition-semantic-role-labeling")
+# prep_srl_predictor._model = prep_srl_predictor._model.cuda()
+# print('LOADED PREP MODEL')
 
-tokenizer = SpacyWordSplitter(language='en_core_web_sm', pos_tags=True)
 # print("Processing time for loading models: ", time() - start_load_model)
 
 def separate_hyphens(og_sentence):
@@ -117,64 +127,58 @@ class MyWebService(object):
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def annotate(self, sentence=None, task=None):
-        print("Current Time: ", datetime.now())
+    def annotate(self, sentence=None):
+        # print("Current Time: ", datetime.now())
         start_time = time()
         try:
+            # print("######################try")
             input_json_data = cherrypy.request.json
             input_json_data["sentence"] = " ".join(separate_hyphens(input_json_data["sentence"].split()))
         except:
+            # print("######################except")
             # data = cherrypy.request.params
             if sentence is None:
+                # print("######################sentence none")
                 cherrypy.response.headers['Content-Type'] = 'text/plain'
                 input_data = cherrypy.request.body.readline()
                 sentence = input_data.decode("utf-8")
                 input_json_data = {"sentence": " ".join(separate_hyphens(sentence.split()))}
             else:
+                # print("######################else")
                 sentence = separate_hyphens(sentence.split())
                 input_json_data = {"sentence": " ".join(sentence)}
 
-        tokens = tokenizer.split_words(input_json_data["sentence"])
-        if task=="tokenize":
-            json_output = {}
-            json_output["sentences"] = input_json_data["sentence"]
-            json_output["tokens"] = tokens
-            return json_output
-
+        if "task" in input_json_data and input_json_data["task"]=="tokenize":
+            return {"tokens": tokenizer.split_words(input_json_data["sentence"])}
         # start_time_comp = time()
         id_output = nom_id_predictor.predict_json(input_json_data)
-        # id_output = nom_id_predictor.predict_tokenized(tokens)
         # print("Processing time for ",  "id :", time() - start_time_comp)
 
         # start_time_comp = time()
         nom_srl_input = self._convert_id_to_srl_input(id_output)
         nom_srl_output = nom_sense_srl_predictor.predict_json(nom_srl_input)
-        # nom_srl_output = nom_sense_srl_predictor.predict_json(nom_srl_input)
         # print("Processing time for ",  "nom_srl :", time() - start_time_comp)
 
         # start_time_comp = time()
         all_nom_srl_output = all_nom_sense_srl_predictor.predict_json(input_json_data)
-        # all_nom_srl_output = all_nom_sense_srl_predictor.predict_tokenized(tokens)
         # print("Processing time for ",  "all_nom_srl :", time() - start_time_comp)
 
         # start_time_comp = time()
         verb_srl_output = verb_sense_srl_predictor.predict_json(input_json_data)
-        # verb_srl_output = verb_sense_srl_predictor.predict_tokenized(tokens)
         # print("Processing time for ",  "verb_srl :", time() - start_time_comp)
 
         # start_time_comp = time()
-        prep_srl_output = prep_srl_predictor.predict_json(input_json_data)
-        # prep_srl_output = prep_srl_predictor.predict_tokenized(tokens)
+        # prep_srl_output = prep_srl_predictor.predict_json(input_json_data)
         # print("Processing time for ",  "prep_srl :", time() - start_time_comp)
 
         tabular_structure = TabularView()
         tabular_structure.update_sentence(nom_srl_output)
+        # tabular_structure.update_sentence(verb_srl_output)
         tabular_structure.update_view("SRL_VERB", verb_srl_output)
         tabular_structure.update_view("SRL_NOM", nom_srl_output)
         tabular_structure.update_view("SRL_NOM_ALL", all_nom_srl_output)
-        tabular_structure.update_view("SRL_PREP", prep_srl_output)
-        # tabular_structure.update_view("SRL_PREP", None)
-        print("\n\nProcessing Time: ", time() - start_time, "\n\n")
+        # tabular_structure.update_view("SRL_PREP", prep_srl_output)
+        # print("\n\nProcessing Time: ", time() - start_time, "\n\n")
         return tabular_structure.get_textannotation()
 
 if __name__ == '__main__':
