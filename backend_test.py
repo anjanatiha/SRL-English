@@ -27,36 +27,38 @@ serverPort = int( sys.argv[2] )
 language = 'en_core_web_sm'
 tokenizer = SpacyWordSplitter(language=language, pos_tags=True)
 
-cuda_available = torch.cuda.is_available()
 # start_load_model = time()
-nom_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/nom-sense-srl/model.tar.gz',)
-verb_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/verb-sense-srl/model.tar.gz',)
+# nom_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/nom-sense-srl/model.tar.gz',)
+nom_sense_srl_archive = load_archive('/shared/ccgadmin/demos/srl/SRL-English-Leguin/nominal_sense_srl/model.tar.gz',)
+
+# verb_sense_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/verb-sense-srl/model.tar.gz',)
+verb_sense_srl_archive = load_archive('/shared/ccgadmin/demos/srl/SRL-English-Leguin/verb_sense_srl/model.tar.gz',)
 
 nom_sense_srl_predictor = NomSenseSRLPredictor.from_archive(nom_sense_srl_archive, "nombank-sense-srl")
-if cuda_available:
-    nom_sense_srl_predictor._model = nom_sense_srl_predictor._model.cuda()
-
 all_nom_sense_srl_predictor = AllNomSenseSRLPredictor.from_archive(nom_sense_srl_archive, "all-nombank-sense-srl")
-if cuda_available:
-    all_nom_sense_srl_predictor._model = all_nom_sense_srl_predictor._model.cuda()
-# print('LOADED NOM MODEL')
+print('LOADED NOM MODEL')
 
 verb_sense_srl_predictor = SenseSRLPredictor.from_archive(verb_sense_srl_archive, "sense-semantic-role-labeling")
-if cuda_available:
-    verb_sense_srl_predictor._model = verb_sense_srl_predictor._model.cuda()
 print('LOADED VERB MODEL')
+    
+
 # verb_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/verb-srl-bert/model.tar.gz',)
 # verb_srl_predictor = VerbSemanticRoleLabelerPredictor.from_archive(verb_srl_archive, "semantic-role-labeling")
 
-nom_id_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/test-id-bert/model.tar.gz',)
+# nom_id_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/test-id-bert/model.tar.gz',)
+nom_id_archive = load_archive('/shared/ccgadmin/demos/srl/SRL-English-Leguin/test-id-bert/model.tar.gz',)
 nom_id_predictor = NominalIdPredictor.from_archive(nom_id_archive, "nombank-id")
-if cuda_available:
-    nom_id_predictor._model = nom_id_predictor._model.cuda()
+
+if torch.cuda.is_available():
+    nom_sense_srl_predictor._model = nom_sense_srl_predictor._model.cuda()
+    all_nom_sense_srl_predictor._model = all_nom_sense_srl_predictor._model.cuda()
+    verb_sense_srl_predictor._model = verb_sense_srl_predictor._model.cuda()
+    nom_id_predictor._model = nom_id_predictor._model.cuda() 
 
 # nom_srl_archive = load_archive('/shared/celinel/test_allennlp/v0.9.0/nom-srl-bert/model.tar.gz',)
 # nom_srl_predictor = NominalSemanticRoleLabelerPredictor.from_archive(nom_srl_archive, "nombank-semantic-role-labeling")
 # noun_srl_predictor = NounSemanticRoleLabelerPredictor.from_archive(nom_srl_archive, "noun-semantic-role-labeling")
-print('LOADED NOM MODEL')
+# print('LOADED NOM MODEL')
 
 # prep_srl_archive = load_archive("/shared/fmarini/preposition-SRL/preposition-SRL/new-srl-manual/model.tar.gz",)
 # prep_srl_predictor = PrepositionSemanticRoleLabelerPredictor.from_archive(prep_srl_archive, "preposition-semantic-role-labeling")
@@ -164,7 +166,10 @@ class MyWebService(object):
         # print("Processing time for ",  "all_nom_srl :", time() - start_time_comp)
 
         # start_time_comp = time()
-        verb_srl_output = verb_sense_srl_predictor.predict_json(input_json_data)
+        verb_srl_output_dict = verb_sense_srl_predictor.predict_json(input_json_data, demo_version=True)
+        verb_srl_output = verb_srl_output_dict["results"]
+        verb_srl_temporal = verb_srl_output_dict["verb_srl_temporal"]
+        # print("\nverb_srl_output : ", verb_srl_output2)
         # print("Processing time for ",  "verb_srl :", time() - start_time_comp)
 
         # start_time_comp = time()
@@ -179,6 +184,13 @@ class MyWebService(object):
         tabular_structure.update_view("SRL_NOM_ALL", all_nom_srl_output)
         # tabular_structure.update_view("SRL_PREP", prep_srl_output)
         # print("\n\nProcessing Time: ", time() - start_time, "\n\n")
+        # print("\n\ntabular_structure.get_textannotation(): ", tabular_structure.get_textannotation())
+        # if "task" in input_json_data and input_json_data["task"]=="event_verb":
+        #     print("\ntask : ", {"annotation": tabular_structure.get_textannotation(), "verb_srl": verb_srl_output2})
+        #     return {"annotation": tabular_structure.get_textannotation(), "verb_srl": verb_srl_output2}
+        if input_json_data["task"]=="verb_srl_temporal":
+            return {"text_annotation":tabular_structure.get_textannotation(), "verb_srl_temporal": verb_srl_temporal}
+        
         return tabular_structure.get_textannotation()
 
 if __name__ == '__main__':
