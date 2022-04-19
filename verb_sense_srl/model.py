@@ -132,7 +132,8 @@ class SenseSRLModel(Model):
                                                                           self.num_classes])
         
         sense_logits = self.sense_projection_layer(embedded_text_input)
-        verb_idx = torch.nonzero(verb_indicator)
+        # verb_idx = torch.nonzero(verb_indicator)
+        verb_idx = torch.nonzero(verb_indicator, as_tuple=False)
         sense_logits_list = []
         # torch.nonzero gives us all indices of nonzero elts, so just get the first one.
         last_i = -1
